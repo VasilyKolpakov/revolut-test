@@ -10,6 +10,7 @@ lazy val root = (project in file(".")).
     name := "revolut-test",
     libraryDependencies ++= Seq(
       sparkJava,
+      json4sJackson,
       scalaTest % Test
     )
   )
