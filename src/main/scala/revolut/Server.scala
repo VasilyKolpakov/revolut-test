@@ -11,7 +11,7 @@ class Server {
 
   case class Amount(amount: BigDecimal)
 
-  private implicit val formats: DefaultFormats = DefaultFormats
+  private implicit val formats: Formats = DefaultFormats.withBigDecimal
 
   private val accounts = mutable.Map[String, BigDecimal]()
 
@@ -139,10 +139,7 @@ class Server {
           }
         )
     })
-  }
-
-  def stop(): Unit = {
-    Spark.stop()
+    Spark.awaitInitialization()
   }
 
   private def getCurrentAmount(accountId: String): Either[String, BigDecimal] = {
