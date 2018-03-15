@@ -1,12 +1,13 @@
 package revolut
 
-import spark.Spark._
-
 import scala.collection.mutable
+
 import org.json4s._
 import org.json4s.jackson.JsonMethods._
+import spark.Spark
+import spark.Spark._
 
-object Server {
+class Server {
 
   case class Amount(amount: BigDecimal)
 
@@ -14,21 +15,25 @@ object Server {
 
   private val accounts = mutable.Map[String, BigDecimal]()
 
-  def main(args: Array[String]): Unit = {
+  def start(): Unit = {
 
     /**
-     * POST /create/{account_id} creates account
+     * POST /create/{account_id} creates account, returns error if account already exists
      *
      * On success the response should look like this:
      * { "result": "OK" }
      *
      * If there was a failure:
-     * { "error": "error description"}
+     * { "error": "account already exists"}
      */
     post("/create/*", (request, response) => {
       val accountId = request.splat()(0)
-      accounts += (accountId -> 0)
-      s"""{ "result": "OK" }"""
+      if (accounts.contains(accountId)) {
+        """{ "error": "account already exists"}"""
+      } else {
+        accounts += (accountId -> 0)
+        s"""{ "result": "OK" }"""
+      }
     })
 
     /**
@@ -136,14 +141,18 @@ object Server {
     })
   }
 
-  def getCurrentAmount(accountId: String): Either[String, BigDecimal] = {
+  def stop(): Unit = {
+    Spark.stop()
+  }
+
+  private def getCurrentAmount(accountId: String): Either[String, BigDecimal] = {
     accounts.get(accountId) match {
       case Some(amount) => Right(amount)
-      case None => Left("no such account")
+      case None => Left(s"no such account: $accountId")
     }
   }
 
-  def parseAmountJson(json: String): Either[String, BigDecimal] = {
+  private def parseAmountJson(json: String): Either[String, BigDecimal] = {
     val amountOrError = for {
       jValue <- parseOpt(json).toRight("json parse error").right
       amount <- jValue.extractOpt[Amount].toRight("not a valid json").right
@@ -151,5 +160,9 @@ object Server {
     amountOrError.right
       .filter(_.signum >= 0)
       .getOrElse(Left("amount can't be negative"))
+  }
+
+  def main(args: Array[String]): Unit = {
+    new Server().start()
   }
 }
