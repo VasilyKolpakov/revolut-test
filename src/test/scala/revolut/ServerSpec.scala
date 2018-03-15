@@ -18,37 +18,40 @@ class ServerSpec extends FunSuite with BeforeAndAfter with Matchers {
   server.start()
 
   test("new accounts have no money") {
-    val createRequest = sttp.post(
-      uri"http://localhost:4567/create/test/"
-    )
-    createRequest.send()
-    val amountRequest = sttp.get(
-      uri"http://localhost:4567/amount/test"
-    )
-    val amountResponse = amountRequest.send()
-    val json = amountResponse.body.right.get
-    val result = parse(json).extract[NumberResult]
+    createAccount("test")
+    val result = amount("test")
     result.result should equal(0)
   }
 
   test("deposit method adds money to an account") {
+    createAccount("test2")
+    depost("test2", 100.01)
+    val result = amount("test2")
+    result.result should equal(100.01)
+  }
+
+  private def createAccount(accountId: String) = {
     val createRequest = sttp.post(
-      uri"http://localhost:4567/create/test2/"
+      uri"http://localhost:4567/create/$accountId/"
     )
     createRequest.send()
+  }
 
-    val depositRequest = sttp.post(
-      uri"http://localhost:4567/deposit/test2/"
-    ).body("""{"amount": 100.01}""")
-    depositRequest.send()
-
+  private def amount(accountId: String) = {
     val amountRequest = sttp.get(
-      uri"http://localhost:4567/amount/test2"
+      uri"http://localhost:4567/amount/$accountId"
     )
     val amountResponse = amountRequest.send()
     val json = amountResponse.body.right.get
-    val result = parse(json).extract[NumberResult]
-    result.result should equal(100.01)
+    parse(json).extract[NumberResult]
   }
+
+  private def depost(accountId: String, amount: BigDecimal) = {
+    val depositRequest = sttp.post(
+      uri"http://localhost:4567/deposit/$accountId/"
+    ).body(s"""{"amount": $amount}""")
+    depositRequest.send()
+  }
+
 
 }
