@@ -4,12 +4,13 @@ import scala.collection.mutable
 
 import org.json4s._
 import org.json4s.jackson.JsonMethods._
+import org.json4s.JsonDSL.WithBigDecimal._
 import spark.Spark
 import spark.Spark._
 
-class Server {
+case class Amount(amount: BigDecimal)
 
-  case class Amount(amount: BigDecimal)
+class Server {
 
   private implicit val formats: Formats = DefaultFormats.withBigDecimal
 
@@ -29,10 +30,10 @@ class Server {
     post("/create/*", (request, response) => {
       val accountId = request.splat()(0)
       if (accounts.contains(accountId)) {
-        s"""{ "error": "account $accountId already exists"}"""
+        renderError(s"account $accountId already exists")
       } else {
         accounts += (accountId -> 0)
-        s"""{ "result": "OK" }"""
+        okResult
       }
     })
 
@@ -49,10 +50,11 @@ class Server {
     get("/amount/*", (request, response) => {
       val accountId = request.splat()(0)
       getCurrentAmount(accountId).fold(
-        error => s"""{ "error": $error }""",
-        amount => s"""{ "result": $amount }"""
+        error => renderError(error),
+        amount => renderNumberResult(amount)
       )
     })
+
     /**
      * POST /deposit/{account_id} adds money to the account
      * POST /withdraw/{account_id} removes money from the account
@@ -78,10 +80,10 @@ class Server {
         depositAmount <- parseAmountJson(request.body()).right
       } yield currentAmount + depositAmount
       newAmountOrError.fold(
-        error => s"""{ "error": $error }""",
+        error => renderError(error),
         newAmount => {
           accounts += (accountId -> newAmount)
-          """{ "result": "OK" }"""
+          okResult
         }
       )
     })
@@ -93,14 +95,14 @@ class Server {
         depositAmount <- parseAmountJson(request.body()).right
       } yield currentAmount + depositAmount
       newAmountOrError.right
-        .filter(_.signum >= 0).getOrElse(Left("not enough money"))
-        .fold(
-          error => s"""{ "error": $error }""",
-          newAmount => {
-            accounts += (accountId -> newAmount)
-            """{ "result": "OK" }"""
-          }
-        )
+          .filter(_.signum >= 0).getOrElse(Left("not enough money"))
+          .fold(
+            error => renderError(error),
+            newAmount => {
+              accounts += (accountId -> newAmount)
+              okResult
+            }
+          )
     })
 
     /**
@@ -128,16 +130,16 @@ class Server {
         transferAmount <- parseAmountJson(request.body())
       } yield (amountFrom - transferAmount, amountTo + transferAmount)
       newAmountsOrError.right
-        .filter { case (fromAmount, _) => fromAmount.signum >= 0 }
-        .getOrElse(Left("not enough money"))
-        .fold(
-          error => s"""{ "error": $error }""",
-          { case (newAmountFrom, newAmountTo) =>
-            accounts += (accountFromId -> newAmountFrom)
-            accounts += (accountToId -> newAmountTo)
-            """{ "result": "OK" }"""
-          }
-        )
+          .filter { case (fromAmount, _) => fromAmount.signum >= 0 }
+          .getOrElse(Left("not enough money"))
+          .fold(
+            error => renderError(error),
+            { case (newAmountFrom, newAmountTo) =>
+              accounts += (accountFromId -> newAmountFrom)
+              accounts += (accountToId -> newAmountTo)
+              okResult
+            }
+          )
     })
     Spark.awaitInitialization()
   }
@@ -154,9 +156,19 @@ class Server {
       jValue <- parseOpt(json).toRight("json parse error").right
       amount <- jValue.extractOpt[Amount].toRight("not a valid json").right
     } yield amount.amount
-    amountOrError.right
-      .filter(_.signum >= 0)
-      .getOrElse(Left("amount can't be negative"))
+    amountOrError.filterOrElse(_.signum >= 0, "amount can't be negative")
+  }
+
+  private def renderError(message: String) = {
+    pretty(render("error" -> message))
+  }
+
+  private def okResult = {
+    pretty(render("result" -> "OK"))
+  }
+
+  private def renderNumberResult(number: BigDecimal) = {
+    pretty(render("result" -> number))
   }
 
   def main(args: Array[String]): Unit = {

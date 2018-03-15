@@ -1,5 +1,7 @@
 package revolut
 
+import java.util.UUID
+
 import com.softwaremill.sttp._
 import org.json4s.{DefaultFormats, _}
 import org.json4s.jackson.JsonMethods.parse
@@ -19,23 +21,54 @@ class ServerSpec extends FunSuite with BeforeAndAfter with Matchers with EitherV
   var server: Server = new Server
   server.start()
 
+  var accountId: String = _
+
+  before {
+    accountId = UUID.randomUUID().toString
+  }
+
+  /**
+   * 'create' method
+   */
+
   test("new accounts have no money") {
-    createAccount("test")
-    val result = amount("test")
+    createAccount(accountId)
+    val result = amount(accountId)
     result.result should equal(0)
   }
 
   test("'create' method returns an error if account already exists") {
-    createAccount("test")
-    val response = createAccount("test")
-    response.left.value.error should (include("test") and include("exists"))
+    createAccount(accountId)
+    val response = createAccount(accountId)
+    response.left.value.error should (include(accountId) and include("exists"))
   }
 
+  /**
+   * 'deposit' method
+   */
+
   test("deposit method adds money to an account") {
-    createAccount("test2")
-    depost("test2", 100.01)
-    val result = amount("test2")
+    createAccount(accountId)
+    deposit(accountId, 100.01)
+    val result = amount(accountId)
     result.result should equal(100.01)
+  }
+
+  test("deposit method returns error on negative amounts") {
+    createAccount(accountId)
+    val response = deposit(accountId, -100.01)
+    response.left.value.error should include("negative")
+  }
+
+  test("deposit method returns error on bad json") {
+    createAccount(accountId)
+    val response = deposit(accountId, 100.01, badRequest = true)
+    response.left.value.error should include("json")
+  }
+
+  test("deposit method returns error on non-existent account") {
+    val response = deposit(accountId, 100.01, badRequest = true)
+    response.left.value.error should include(accountId)
   }
 
   private def createAccount(accountId: String) = {
@@ -55,11 +88,13 @@ class ServerSpec extends FunSuite with BeforeAndAfter with Matchers with EitherV
     parse(json).extract[NumberResult]
   }
 
-  private def depost(accountId: String, amount: BigDecimal) = {
+  private def deposit(accountId: String, amount: BigDecimal, badRequest: Boolean = false) = {
     val depositRequest = sttp.post(
       uri"http://localhost:4567/deposit/$accountId/"
-    ).body(s"""{"amount": $amount}""")
-    depositRequest.send()
+    ).body(s"""{"amount": $amount""" + (if (badRequest) "" else "}"))
+    val response = depositRequest.send()
+    val json = response.body.right.get
+    parse(json).extract[Either[Error, StringResult]]
   }
 
 
