@@ -29,7 +29,7 @@ class Server {
     post("/create/*", (request, response) => {
       val accountId = request.splat()(0)
       if (accounts.contains(accountId)) {
-        """{ "error": "account already exists"}"""
+        s"""{ "error": "account $accountId already exists"}"""
       } else {
         accounts += (accountId -> 0)
         s"""{ "result": "OK" }"""

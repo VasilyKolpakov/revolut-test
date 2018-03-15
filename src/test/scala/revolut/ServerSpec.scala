@@ -3,13 +3,15 @@ package revolut
 import com.softwaremill.sttp._
 import org.json4s.{DefaultFormats, _}
 import org.json4s.jackson.JsonMethods.parse
-import org.scalatest.{BeforeAndAfter, FunSuite, Matchers}
+import org.scalatest.{BeforeAndAfter, EitherValues, FunSuite, Matchers}
 
 case class StringResult(result: String)
 
 case class NumberResult(result: BigDecimal)
 
-class ServerSpec extends FunSuite with BeforeAndAfter with Matchers {
+case class Error(error: String)
+
+class ServerSpec extends FunSuite with BeforeAndAfter with Matchers with EitherValues {
 
   private implicit val formats: Formats = DefaultFormats.withBigDecimal
   private implicit val backend = HttpURLConnectionBackend()
@@ -23,6 +25,12 @@ class ServerSpec extends FunSuite with BeforeAndAfter with Matchers {
     result.result should equal(0)
   }
 
+  test("'create' method returns an error if account already exists") {
+    createAccount("test")
+    val response = createAccount("test")
+    response.left.value.error should (include("test") and include("exists"))
+  }
+
   test("deposit method adds money to an account") {
     createAccount("test2")
     depost("test2", 100.01)
@@ -34,7 +42,8 @@ class ServerSpec extends FunSuite with BeforeAndAfter with Matchers {
     val createRequest = sttp.post(
       uri"http://localhost:4567/create/$accountId/"
     )
-    createRequest.send()
+    val response = createRequest.send()
+    parse(response.body.right.get).extract[Either[Error, StringResult]]
   }
 
   private def amount(accountId: String) = {
