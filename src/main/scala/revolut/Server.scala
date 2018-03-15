@@ -92,10 +92,10 @@ class Server {
       val accountId = request.splat()(0)
       val newAmountOrError = for {
         currentAmount <- getCurrentAmount(accountId).right
-        depositAmount <- parseAmountJson(request.body()).right
-      } yield currentAmount + depositAmount
-      newAmountOrError.right
-          .filter(_.signum >= 0).getOrElse(Left("not enough money"))
+        withdrawAmount <- parseAmountJson(request.body()).right
+      } yield currentAmount - withdrawAmount
+      newAmountOrError
+          .filterOrElse(_.signum >= 0, "not enough money")
           .fold(
             error => renderError(error),
             newAmount => {

@@ -47,28 +47,52 @@ class ServerSpec extends FunSuite with BeforeAndAfter with Matchers with EitherV
    * 'deposit' method
    */
 
-  test("deposit method adds money to an account") {
+  test("'deposit' method adds money to an account") {
     createAccount(accountId)
     deposit(accountId, 100.01)
     val result = amount(accountId)
     result.result should equal(100.01)
   }
 
-  test("deposit method returns error on negative amounts") {
+  test("'deposit' method returns error on negative amounts") {
     createAccount(accountId)
     val response = deposit(accountId, -100.01)
     response.left.value.error should include("negative")
   }
 
-  test("deposit method returns error on bad json") {
+  test("'deposit' method returns error on bad json") {
     createAccount(accountId)
     val response = deposit(accountId, 100.01, badRequest = true)
     response.left.value.error should include("json")
   }
 
-  test("deposit method returns error on non-existent account") {
+  test("'deposit' method returns error on non-existent account") {
     val response = deposit(accountId, 100.01, badRequest = true)
     response.left.value.error should include(accountId)
+  }
+
+  /**
+   * 'withdraw' method
+   */
+
+  test("'withdraw' method removes money from an account") {
+    createAccount(accountId)
+    deposit(accountId, 100.01)
+    withdraw(accountId, 0.01)
+    val result = amount(accountId)
+    result.result should equal(100)
+  }
+
+  test("'withdraw' method returns error if there is not enough money") {
+    createAccount(accountId)
+    val response = withdraw(accountId, 100.01)
+    response.left.value.error should include("not enough")
+  }
+
+  test("'withdraw' method returns error on bad json") {
+    createAccount(accountId)
+    val response = withdraw(accountId, 100.01, badRequest = true)
+    response.left.value.error should include("json")
   }
 
   private def createAccount(accountId: String) = {
@@ -91,6 +115,15 @@ class ServerSpec extends FunSuite with BeforeAndAfter with Matchers with EitherV
   private def deposit(accountId: String, amount: BigDecimal, badRequest: Boolean = false) = {
     val depositRequest = sttp.post(
       uri"http://localhost:4567/deposit/$accountId/"
+    ).body(s"""{"amount": $amount""" + (if (badRequest) "" else "}"))
+    val response = depositRequest.send()
+    val json = response.body.right.get
+    parse(json).extract[Either[Error, StringResult]]
+  }
+
+  private def withdraw(accountId: String, amount: BigDecimal, badRequest: Boolean = false) = {
+    val depositRequest = sttp.post(
+      uri"http://localhost:4567/withdraw/$accountId/"
     ).body(s"""{"amount": $amount""" + (if (badRequest) "" else "}"))
     val response = depositRequest.send()
     val json = response.body.right.get
