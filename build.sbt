@@ -1,5 +1,7 @@
 import Dependencies._
 
+enablePlugins(PackPlugin)
+
 lazy val root = (project in file(".")).
   settings(
     inThisBuild(List(
@@ -17,3 +19,5 @@ lazy val root = (project in file(".")).
       scalaTest % Test
     )
   )
+
+packMain := Map("startServer" -> "revolut.Server")
