@@ -1,5 +1,7 @@
 package revolut
 
+import java.util.concurrent.locks.ReentrantReadWriteLock
+
 import scala.collection.mutable
 
 import org.json4s._
@@ -16,6 +18,8 @@ class Server {
 
   private val accounts = mutable.Map[String, BigDecimal]()
 
+  private val readWriteLock = new ReentrantReadWriteLock()
+
   def start(): Unit = {
 
     /**
@@ -27,7 +31,7 @@ class Server {
      * If there was a failure:
      * { "error": "account already exists"}
      */
-    post("/create/*", (request, response) => synchronized {
+    post("/create/*", (request, response) => withWriteLock {
       val accountId = request.splat()(0)
       if (accounts.contains(accountId)) {
         renderError(s"account $accountId already exists")
@@ -47,7 +51,7 @@ class Server {
      * { "error": "no such account"}
      */
 
-    get("/amount/*", (request, response) => synchronized {
+    get("/amount/*", (request, response) => withReadLock {
       val accountId = request.splat()(0)
       getCurrentAmount(accountId).fold(
         error => renderError(error),
@@ -73,7 +77,7 @@ class Server {
      * { "error": "no such account"}
      */
 
-    post("/deposit/*", (request, response) => synchronized {
+    post("/deposit/*", (request, response) => withWriteLock {
       val accountId = request.splat()(0)
       val newAmountOrError = for {
         currentAmount <- getCurrentAmount(accountId).right
@@ -88,7 +92,7 @@ class Server {
       )
     })
 
-    post("/withdraw/*", (request, response) => synchronized {
+    post("/withdraw/*", (request, response) => withWriteLock {
       val accountId = request.splat()(0)
       val newAmountOrError = for {
         currentAmount <- getCurrentAmount(accountId).right
@@ -121,7 +125,7 @@ class Server {
      */
 
 
-    post("/transfer/*/*", (request, response) => synchronized {
+    post("/transfer/*/*", (request, response) => withWriteLock {
       val accountFromId = request.splat()(0)
       val accountToId = request.splat()(1)
       val newAmountsOrError = for {
@@ -176,6 +180,26 @@ class Server {
 
   private def renderNumberResult(number: BigDecimal) = {
     pretty(render("result" -> number))
+  }
+
+  private def withReadLock[T](block: => T): T = {
+    val lock = readWriteLock.readLock()
+    lock.lock()
+    try {
+      block
+    } finally {
+      lock.unlock()
+    }
+  }
+
+  private def withWriteLock[T](block: => T): T = {
+    val lock = readWriteLock.writeLock()
+    lock.lock()
+    try {
+      block
+    } finally {
+      lock.unlock()
+    }
   }
 
   def main(args: Array[String]): Unit = {
