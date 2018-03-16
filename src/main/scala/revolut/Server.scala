@@ -4,6 +4,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock
 
 import scala.collection.mutable
 
+import com.typesafe.scalalogging.Logger
 import org.json4s._
 import org.json4s.jackson.JsonMethods._
 import org.json4s.JsonDSL.WithBigDecimal._
@@ -12,7 +13,15 @@ import spark.Spark._
 
 case class Amount(amount: BigDecimal)
 
+object Server {
+  def main(args: Array[String]): Unit = {
+    new Server().start()
+  }
+}
+
 class Server {
+
+  private val log = Logger(getClass)
 
   private implicit val formats: Formats = DefaultFormats.withBigDecimal
 
@@ -34,9 +43,11 @@ class Server {
     post("/create/*", (request, response) => withWriteLock {
       val accountId = request.splat()(0)
       if (accounts.contains(accountId)) {
+        log.debug(s"error during account creation: account $accountId already exists")
         renderError(s"account $accountId already exists")
       } else {
         accounts += (accountId -> 0)
+        log.debug(s"registered account $accountId")
         okResult
       }
     })
@@ -54,8 +65,14 @@ class Server {
     get("/amount/*", (request, response) => withReadLock {
       val accountId = request.splat()(0)
       getCurrentAmount(accountId).fold(
-        error => renderError(error),
-        amount => renderNumberResult(amount)
+        error => {
+          log.debug(s"'amount' method error: $error")
+          renderError(error)
+        },
+        amount => {
+          log.debug(s"'amount' method success: $accountId - $amount")
+          renderNumberResult(amount)
+        }
       )
     })
 
@@ -84,8 +101,12 @@ class Server {
         depositAmount <- parseAmountJson(request.body()).right
       } yield currentAmount + depositAmount
       newAmountOrError.fold(
-        error => renderError(error),
+        error => {
+          log.debug(s"'deposit' method error: $error")
+          renderError(error)
+        },
         newAmount => {
+          log.debug(s"'deposit' method success: $accountId - $newAmount")
           accounts += (accountId -> newAmount)
           okResult
         }
@@ -101,8 +122,12 @@ class Server {
       newAmountOrError
           .filterOrElse(_.signum >= 0, "not enough money")
           .fold(
-            error => renderError(error),
+            error => {
+              log.debug(s"'withdraw' method error: $error")
+              renderError(error)
+            },
             newAmount => {
+              log.debug(s"'withdraw' method success: $accountId - $newAmount")
               accounts += (accountId -> newAmount)
               okResult
             }
@@ -143,8 +168,14 @@ class Server {
             "not enough money"
           )
           .fold(
-            error => renderError(error),
+            error => {
+              log.debug("'transfer' method error: {}", error)
+              renderError(error)
+            },
             { case (newAmountFrom, newAmountTo) =>
+              log.debug(s"'withdraw' method success: " +
+                  s"$accountFromId - $newAmountFrom ; $accountToId - $newAmountTo"
+              )
               accounts += (accountFromId -> newAmountFrom)
               accounts += (accountToId -> newAmountTo)
               okResult
@@ -200,9 +231,5 @@ class Server {
     } finally {
       lock.unlock()
     }
-  }
-
-  def main(args: Array[String]): Unit = {
-    new Server().start()
   }
 }
