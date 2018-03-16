@@ -27,7 +27,7 @@ class Server {
      * If there was a failure:
      * { "error": "account already exists"}
      */
-    post("/create/*", (request, response) => {
+    post("/create/*", (request, response) => synchronized {
       val accountId = request.splat()(0)
       if (accounts.contains(accountId)) {
         renderError(s"account $accountId already exists")
@@ -47,7 +47,7 @@ class Server {
      * { "error": "no such account"}
      */
 
-    get("/amount/*", (request, response) => {
+    get("/amount/*", (request, response) => synchronized {
       val accountId = request.splat()(0)
       getCurrentAmount(accountId).fold(
         error => renderError(error),
@@ -73,7 +73,7 @@ class Server {
      * { "error": "no such account"}
      */
 
-    post("/deposit/*", (request, response) => {
+    post("/deposit/*", (request, response) => synchronized {
       val accountId = request.splat()(0)
       val newAmountOrError = for {
         currentAmount <- getCurrentAmount(accountId).right
@@ -88,7 +88,7 @@ class Server {
       )
     })
 
-    post("/withdraw/*", (request, response) => {
+    post("/withdraw/*", (request, response) => synchronized {
       val accountId = request.splat()(0)
       val newAmountOrError = for {
         currentAmount <- getCurrentAmount(accountId).right
@@ -121,7 +121,7 @@ class Server {
      */
 
 
-    post("/transfer/*/*", (request, response) => {
+    post("/transfer/*/*", (request, response) => synchronized {
       val accountFromId = request.splat()(0)
       val accountToId = request.splat()(1)
       val newAmountsOrError = for {

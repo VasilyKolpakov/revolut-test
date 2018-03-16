@@ -1,6 +1,11 @@
 package revolut
 
 import java.util.UUID
+import java.util.concurrent.Executors
+
+import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.duration.Duration
+import scala.util.Random
 
 import com.softwaremill.sttp._
 import org.json4s.{DefaultFormats, _}
@@ -137,6 +142,38 @@ class ServerSpec extends FunSuite with BeforeAndAfter with Matchers with EitherV
     val response = transfer(accountId, accountId, 10)
     response.left.value.error should (include(accountId) and include("same"))
     amount(accountId).right.value.result should equal(100)
+  }
+
+  /**
+   * multithreading
+   */
+
+  test("multithreading") {
+    val threadPool = Executors.newFixedThreadPool(10, (runnable: Runnable) => {
+      val thread = new Thread(runnable)
+      thread.setDaemon(true)
+      thread
+    })
+    implicit val executionContext: ExecutionContext = ExecutionContext.fromExecutor(threadPool)
+    val accounts = (1 to 5).map {
+      accountId + "_" + _
+    }
+    for (account <- accounts) {
+      createAccount(account)
+      deposit(account, 100)
+    }
+    val random = new Random()
+
+    def randomAccount = accounts(random.nextInt(accounts.size))
+
+    val futures = for (_ <- 0 to 500) yield {
+      Future {
+        transfer(randomAccount, randomAccount, 1)
+      }
+    }
+    Await.ready(Future.sequence(futures), Duration.Inf)
+    val sum = accounts.map(account => amount(account).right.get.result).sum
+    sum should equal(accounts.size * 100)
   }
 
   private def createAccount(accountId: String) = {
