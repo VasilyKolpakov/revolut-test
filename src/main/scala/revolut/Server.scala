@@ -129,9 +129,11 @@ class Server {
         amountTo <- getCurrentAmount(accountToId)
         transferAmount <- parseAmountJson(request.body())
       } yield (amountFrom - transferAmount, amountTo + transferAmount)
-      newAmountsOrError.right
-          .filter { case (fromAmount, _) => fromAmount.signum >= 0 }
-          .getOrElse(Left("not enough money"))
+      newAmountsOrError
+          .filterOrElse(
+            { case (fromAmount, _) => fromAmount.signum >= 0 },
+            "not enough money"
+          )
           .fold(
             error => renderError(error),
             { case (newAmountFrom, newAmountTo) =>
@@ -141,6 +143,7 @@ class Server {
             }
           )
     })
+
     Spark.awaitInitialization()
   }
 

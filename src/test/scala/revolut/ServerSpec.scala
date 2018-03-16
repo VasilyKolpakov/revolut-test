@@ -95,6 +95,33 @@ class ServerSpec extends FunSuite with BeforeAndAfter with Matchers with EitherV
     response.left.value.error should include("json")
   }
 
+  /**
+   * 'transfer' method
+   */
+
+  private def accountFrom = accountId + "_from"
+
+  private def accountTo = accountId + "_to"
+
+  test("'transfer' method moves money") {
+    createAccount(accountFrom)
+    createAccount(accountTo)
+    deposit(accountFrom, 100)
+    transfer(accountFrom, accountTo, 100)
+    amount(accountFrom).result should equal(0)
+    amount(accountTo).result should equal(100)
+  }
+
+  test("'transfer' method returns error if there is not enough money") {
+    createAccount(accountFrom)
+    createAccount(accountTo)
+    deposit(accountFrom, 10)
+    val response = transfer(accountFrom, accountTo, 100)
+    response.left.value.error should include("enough")
+    amount(accountFrom).result should equal(10)
+    amount(accountTo).result should equal(0)
+  }
+
   private def createAccount(accountId: String) = {
     val createRequest = sttp.post(
       uri"http://localhost:4567/create/$accountId/"
@@ -130,5 +157,13 @@ class ServerSpec extends FunSuite with BeforeAndAfter with Matchers with EitherV
     parse(json).extract[Either[Error, StringResult]]
   }
 
+  private def transfer(accountIdFrom: String, accountIdTo: String, amount: BigDecimal, badRequest: Boolean = false) = {
+    val depositRequest = sttp.post(
+      uri"http://localhost:4567/transfer/$accountIdFrom/$accountIdTo/"
+    ).body(s"""{"amount": $amount""" + (if (badRequest) "" else "}"))
+    val response = depositRequest.send()
+    val json = response.body.right.get
+    parse(json).extract[Either[Error, StringResult]]
+  }
 
 }
