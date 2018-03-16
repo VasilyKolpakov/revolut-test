@@ -125,6 +125,10 @@ class Server {
       val accountFromId = request.splat()(0)
       val accountToId = request.splat()(1)
       val newAmountsOrError = for {
+        _ <- if (accountFromId == accountToId)
+          Left(s"can't transfer to the same account: $accountFromId")
+        else
+          Right()
         amountFrom <- getCurrentAmount(accountFromId)
         amountTo <- getCurrentAmount(accountToId)
         transferAmount <- parseAmountJson(request.body())

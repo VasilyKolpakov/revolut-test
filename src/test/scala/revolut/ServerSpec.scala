@@ -131,6 +131,14 @@ class ServerSpec extends FunSuite with BeforeAndAfter with Matchers with EitherV
     amount(accountTo).right.value.result should equal(0)
   }
 
+  test("'transfer' method returns error 'from' and 'to' accounts are the same") {
+    createAccount(accountId)
+    deposit(accountId, 100)
+    val response = transfer(accountId, accountId, 10)
+    response.left.value.error should (include(accountId) and include("same"))
+    amount(accountId).right.value.result should equal(100)
+  }
+
   private def createAccount(accountId: String) = {
     val createRequest = sttp.post(
       uri"http://localhost:4567/create/$accountId/"
