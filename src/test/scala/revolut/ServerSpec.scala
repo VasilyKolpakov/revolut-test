@@ -34,13 +34,22 @@ class ServerSpec extends FunSuite with BeforeAndAfter with Matchers with EitherV
   test("new accounts have no money") {
     createAccount(accountId)
     val result = amount(accountId)
-    result.result should equal(0)
+    result.right.value.result should equal(0)
   }
 
   test("'create' method returns an error if account already exists") {
     createAccount(accountId)
     val response = createAccount(accountId)
     response.left.value.error should (include(accountId) and include("exists"))
+  }
+
+  /**
+   * 'amount' method
+   */
+
+  test("'amount' method returns an error if account doesn't exist") {
+    val response = amount(accountId)
+    response.left.value.error should include(accountId)
   }
 
   /**
@@ -51,7 +60,7 @@ class ServerSpec extends FunSuite with BeforeAndAfter with Matchers with EitherV
     createAccount(accountId)
     deposit(accountId, 100.01)
     val result = amount(accountId)
-    result.result should equal(100.01)
+    result.right.value.result should equal(100.01)
   }
 
   test("'deposit' method returns error on negative amounts") {
@@ -80,7 +89,7 @@ class ServerSpec extends FunSuite with BeforeAndAfter with Matchers with EitherV
     deposit(accountId, 100.01)
     withdraw(accountId, 0.01)
     val result = amount(accountId)
-    result.result should equal(100)
+    result.right.value.result should equal(100)
   }
 
   test("'withdraw' method returns error if there is not enough money") {
@@ -108,8 +117,8 @@ class ServerSpec extends FunSuite with BeforeAndAfter with Matchers with EitherV
     createAccount(accountTo)
     deposit(accountFrom, 100)
     transfer(accountFrom, accountTo, 100)
-    amount(accountFrom).result should equal(0)
-    amount(accountTo).result should equal(100)
+    amount(accountFrom).right.value.result should equal(0)
+    amount(accountTo).right.value.result should equal(100)
   }
 
   test("'transfer' method returns error if there is not enough money") {
@@ -118,8 +127,8 @@ class ServerSpec extends FunSuite with BeforeAndAfter with Matchers with EitherV
     deposit(accountFrom, 10)
     val response = transfer(accountFrom, accountTo, 100)
     response.left.value.error should include("enough")
-    amount(accountFrom).result should equal(10)
-    amount(accountTo).result should equal(0)
+    amount(accountFrom).right.value.result should equal(10)
+    amount(accountTo).right.value.result should equal(0)
   }
 
   private def createAccount(accountId: String) = {
@@ -136,7 +145,7 @@ class ServerSpec extends FunSuite with BeforeAndAfter with Matchers with EitherV
     )
     val amountResponse = amountRequest.send()
     val json = amountResponse.body.right.get
-    parse(json).extract[NumberResult]
+    parse(json).extract[Either[Error, NumberResult]]
   }
 
   private def deposit(accountId: String, amount: BigDecimal, badRequest: Boolean = false) = {
