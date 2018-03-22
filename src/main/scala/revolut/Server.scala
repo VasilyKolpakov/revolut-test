@@ -1,7 +1,5 @@
 package revolut
 
-import java.util.concurrent.locks.ReentrantReadWriteLock
-
 import com.typesafe.scalalogging.Logger
 import org.json4s._
 import org.json4s.jackson.JsonMethods._
@@ -25,8 +23,6 @@ class Server {
 
   private val accountsDb = new AccountsDB
 
-  private val readWriteLock = new ReentrantReadWriteLock()
-
   def start(): Unit = {
 
     /**
@@ -38,7 +34,7 @@ class Server {
      * If there was a failure:
      * { "error": "account already exists"}
      */
-    post("/create/*", (request, response) => withWriteLock {
+    post("/create/*", (request, response) => {
       val accountId = request.splat()(0)
       accountsDb.createAccount(accountId).fold(
         error => {
@@ -62,7 +58,7 @@ class Server {
      * { "error": "no such account"}
      */
 
-    get("/amount/*", (request, response) => withReadLock {
+    get("/amount/*", (request, response) => {
       val accountId = request.splat()(0)
       accountsDb.getCurrentAmount(accountId).fold(
         error => {
@@ -94,7 +90,7 @@ class Server {
      * { "error": "no such account"}
      */
 
-    post("/deposit/*", (request, response) => withWriteLock {
+    post("/deposit/*", (request, response) => {
       val accountId = request.splat()(0)
       val newAmountOrError = for {
         depositAmount <- parseAmountJson(request.body()).right
@@ -112,7 +108,7 @@ class Server {
       )
     })
 
-    post("/withdraw/*", (request, response) => withWriteLock {
+    post("/withdraw/*", (request, response) => {
       val accountId = request.splat()(0)
       val newAmountOrError = for {
         withdrawAmount <- parseAmountJson(request.body()).right
@@ -147,7 +143,7 @@ class Server {
      */
 
 
-    post("/transfer/*/*", (request, response) => withWriteLock {
+    post("/transfer/*/*", (request, response) => {
       val accountFromId = request.splat()(0)
       val accountToId = request.splat()(1)
       val newAmountsOrError = for {
@@ -192,23 +188,4 @@ class Server {
     pretty(render("result" -> number))
   }
 
-  private def withReadLock[T](block: => T): T = {
-    val lock = readWriteLock.readLock()
-    lock.lock()
-    try {
-      block
-    } finally {
-      lock.unlock()
-    }
-  }
-
-  private def withWriteLock[T](block: => T): T = {
-    val lock = readWriteLock.writeLock()
-    lock.lock()
-    try {
-      block
-    } finally {
-      lock.unlock()
-    }
-  }
 }

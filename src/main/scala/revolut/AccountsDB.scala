@@ -1,11 +1,15 @@
 package revolut
 
+import java.util.concurrent.locks.ReentrantReadWriteLock
+
 import scala.collection.mutable
 
 class AccountsDB {
+
+  private val readWriteLock = new ReentrantReadWriteLock()
   private val accounts = mutable.Map[String, BigDecimal]()
 
-  def createAccount(accountId: String): Either[String, Unit] = {
+  def createAccount(accountId: String): Either[String, Unit] = withWriteLock {
     if (accounts.contains(accountId)) {
       Left(s"account $accountId already exists")
     } else {
@@ -14,14 +18,16 @@ class AccountsDB {
     }
   }
 
-  def getCurrentAmount(accountId: String): Either[String, BigDecimal] = {
+  def getCurrentAmount(accountId: String): Either[String, BigDecimal] = withReadLock {
     accounts.get(accountId) match {
       case Some(amount) => Right(amount)
       case None => Left(s"no such account: $accountId")
     }
   }
 
-  def deposit(accountId: String, depositAmount: BigDecimal): Either[String, BigDecimal] = {
+  def deposit(
+      accountId: String,
+      depositAmount: BigDecimal): Either[String, BigDecimal] = withWriteLock {
     for {
       currentAmount <- getCurrentAmount(accountId).right
     } yield {
@@ -31,7 +37,9 @@ class AccountsDB {
     }
   }
 
-  def withdraw(accountId: String, withdrawAmount: BigDecimal): Either[String, BigDecimal] = {
+  def withdraw(
+      accountId: String,
+      withdrawAmount: BigDecimal): Either[String, BigDecimal] = withWriteLock {
     for {
       currentAmount <- getCurrentAmount(accountId).right
       newAmount <-
@@ -48,7 +56,7 @@ class AccountsDB {
   def transfer(
       accountFromId: String,
       accountToId: String,
-      transferAmount: BigDecimal): Either[String, (BigDecimal, BigDecimal)] = {
+      transferAmount: BigDecimal): Either[String, (BigDecimal, BigDecimal)] = withWriteLock {
     for {
       _ <- if (accountFromId == accountToId)
         Left(s"can't transfer to the same account: $accountFromId")
@@ -66,6 +74,26 @@ class AccountsDB {
       accounts += (accountFromId -> newAmountFrom)
       accounts += (accountToId -> newAmountTo)
       newAmounts
+    }
+  }
+
+  private def withReadLock[T](block: => T): T = {
+    val lock = readWriteLock.readLock()
+    lock.lock()
+    try {
+      block
+    } finally {
+      lock.unlock()
+    }
+  }
+
+  private def withWriteLock[T](block: => T): T = {
+    val lock = readWriteLock.writeLock()
+    lock.lock()
+    try {
+      block
+    } finally {
+      lock.unlock()
     }
   }
 }
