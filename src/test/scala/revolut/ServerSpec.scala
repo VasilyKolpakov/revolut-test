@@ -81,7 +81,7 @@ class ServerSpec extends FunSuite with BeforeAndAfter with Matchers with EitherV
   }
 
   test("'deposit' method returns error on non-existent account") {
-    val response = deposit(accountId, 100.01, badRequest = true)
+    val response = deposit(accountId, 100.01)
     response.left.value.error should include(accountId)
   }
 

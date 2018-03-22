@@ -2,8 +2,6 @@ package revolut
 
 import java.util.concurrent.locks.ReentrantReadWriteLock
 
-import scala.collection.mutable
-
 import com.typesafe.scalalogging.Logger
 import org.json4s._
 import org.json4s.jackson.JsonMethods._
@@ -25,7 +23,7 @@ class Server {
 
   private implicit val formats: Formats = DefaultFormats.withBigDecimal
 
-  private val accounts = mutable.Map[String, BigDecimal]()
+  private val accountsDb = new AccountsDB
 
   private val readWriteLock = new ReentrantReadWriteLock()
 
@@ -42,14 +40,16 @@ class Server {
      */
     post("/create/*", (request, response) => withWriteLock {
       val accountId = request.splat()(0)
-      if (accounts.contains(accountId)) {
-        log.debug(s"error during account creation: account $accountId already exists")
-        renderError(s"account $accountId already exists")
-      } else {
-        accounts += (accountId -> 0)
-        log.debug(s"registered account $accountId")
-        okResult
-      }
+      accountsDb.createAccount(accountId).fold(
+        error => {
+          log.debug(s"error during account creation: $error")
+          renderError(error)
+        },
+        _ => {
+          log.debug(s"registered account $accountId")
+          okResult
+        }
+      )
     })
 
     /**
@@ -64,7 +64,7 @@ class Server {
 
     get("/amount/*", (request, response) => withReadLock {
       val accountId = request.splat()(0)
-      getCurrentAmount(accountId).fold(
+      accountsDb.getCurrentAmount(accountId).fold(
         error => {
           log.debug(s"'amount' method error: $error")
           renderError(error)
@@ -97,9 +97,9 @@ class Server {
     post("/deposit/*", (request, response) => withWriteLock {
       val accountId = request.splat()(0)
       val newAmountOrError = for {
-        currentAmount <- getCurrentAmount(accountId).right
         depositAmount <- parseAmountJson(request.body()).right
-      } yield currentAmount + depositAmount
+        newAmount <- accountsDb.deposit(accountId, depositAmount).right
+      } yield newAmount
       newAmountOrError.fold(
         error => {
           log.debug(s"'deposit' method error: $error")
@@ -107,7 +107,6 @@ class Server {
         },
         newAmount => {
           log.debug(s"'deposit' method success: $accountId - $newAmount")
-          accounts += (accountId -> newAmount)
           okResult
         }
       )
@@ -116,11 +115,10 @@ class Server {
     post("/withdraw/*", (request, response) => withWriteLock {
       val accountId = request.splat()(0)
       val newAmountOrError = for {
-        currentAmount <- getCurrentAmount(accountId).right
         withdrawAmount <- parseAmountJson(request.body()).right
-      } yield currentAmount - withdrawAmount
+        newAmount <- accountsDb.withdraw(accountId, withdrawAmount).right
+      } yield newAmount
       newAmountOrError
-          .filterOrElse(_.signum >= 0, "not enough money")
           .fold(
             error => {
               log.debug(s"'withdraw' method error: $error")
@@ -128,7 +126,6 @@ class Server {
             },
             newAmount => {
               log.debug(s"'withdraw' method success: $accountId - $newAmount")
-              accounts += (accountId -> newAmount)
               okResult
             }
           )
@@ -154,19 +151,10 @@ class Server {
       val accountFromId = request.splat()(0)
       val accountToId = request.splat()(1)
       val newAmountsOrError = for {
-        _ <- if (accountFromId == accountToId)
-          Left(s"can't transfer to the same account: $accountFromId")
-        else
-          Right()
-        amountFrom <- getCurrentAmount(accountFromId)
-        amountTo <- getCurrentAmount(accountToId)
         transferAmount <- parseAmountJson(request.body())
-      } yield (amountFrom - transferAmount, amountTo + transferAmount)
+        newAmounts <- accountsDb.transfer(accountFromId, accountToId, transferAmount)
+      } yield newAmounts
       newAmountsOrError
-          .filterOrElse(
-            { case (fromAmount, _) => fromAmount.signum >= 0 },
-            "not enough money"
-          )
           .fold(
             error => {
               log.debug("'transfer' method error: {}", error)
@@ -176,21 +164,12 @@ class Server {
               log.debug(s"'withdraw' method success: " +
                   s"$accountFromId - $newAmountFrom ; $accountToId - $newAmountTo"
               )
-              accounts += (accountFromId -> newAmountFrom)
-              accounts += (accountToId -> newAmountTo)
               okResult
             }
           )
     })
 
     Spark.awaitInitialization()
-  }
-
-  private def getCurrentAmount(accountId: String): Either[String, BigDecimal] = {
-    accounts.get(accountId) match {
-      case Some(amount) => Right(amount)
-      case None => Left(s"no such account: $accountId")
-    }
   }
 
   private def parseAmountJson(json: String): Either[String, BigDecimal] = {
